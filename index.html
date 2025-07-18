@@ -7,17 +7,17 @@
 <style>
 :root{
   --bg:#f4f6f8;--card:#ffffff;--text:#1f2937;--sub:#6b7280;--primary:#2563eb;
-  --ok:#16a34a;--err:#dc2626;--border:#d1d5db
+  --ok:#16a34a;--err:#dc2626;--border:#d1d5db;--highlight:#d1fae5
 }
 @media(prefers-color-scheme: dark){
-  :root{--bg:#0f172a;--card:#1e293b;--text:#e2e8f0;--sub:#94a3b8;--border:#334155}
+  :root{--bg:#0f172a;--card:#1e293b;--text:#e2e8f0;--sub:#94a3b8;--border:#334155;--highlight:#064e3b}
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);font-family:-apple-system,Segoe UI,PingFang SC,Helvetica,Arial,sans-serif;color:var(--text);padding:24px}
 h1{font-size:1.4rem;margin-bottom:1rem;color:var(--primary);text-align:center}
 label{font-size:.9rem;color:var(--sub)}
 textarea{width:100%;height:140px;padding:8px;border:1px solid var(--border);border-radius:6px;font-family:monospace;font-size:14px;background:var(--card);color:var(--text)}
-button{margin-top:12px;padding:10px 18px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:.95rem;cursor:pointer;display:block}
+button{margin-top:12px;padding:10px 18px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:.95rem;cursor:pointer;display:block;margin-left:auto;margin-right:auto}
 button:disabled{opacity:.6;cursor:not-allowed}
 .progress{margin-top:10px;font-size:.9rem;color:var(--sub);text-align:center}
 table{width:100%;border-collapse:collapse;margin-top:18px;font-size:.9rem}
@@ -29,25 +29,26 @@ tbody tr:nth-child(odd){background:rgba(0,0,0,.02)}
 @media(prefers-color-scheme: dark){
   tbody tr:nth-child(odd){background:rgba(255,255,255,.03)}
 }
+.highlight{background:var(--highlight)}
+.highlight td:nth-child(3){font-weight:700}
 </style>
 </head>
 <body>
 <h1>Somnia ‑ STT 批量余额查询</h1>
 
 <label for="addrInput">每行一个地址 (0x...):</label>
-<textarea id="addrInput" placeholder="0xCe44bCb7702f7144963291D792be022064a3b7d4"></textarea>
+<textarea id="addrInput" placeholder=""></textarea>
 <button id="runBtn">开始查询</button>
 <p class="progress" id="status">等待开始…</p>
 
 <table>
-  <thead><tr><th>#</th><th>地址</th><th>余额 (STT)</th><th>更新区块</th><th>状态</th></tr></thead>
+  <thead><tr><th>#</th><th>地址</th><th>余额 (STT)</th><th>更新区块</th><th>状态</th></tr></thead>
   <tbody id="tbody"></tbody>
 </table>
 
 <script>
 const API_BASE = 'https://somnia.w3us.site/api/v2';
 const delayMs  = 800; // 间隔 (ms)
-
 const addrInput = document.getElementById('addrInput');
 const runBtn    = document.getElementById('runBtn');
 const statusT   = document.getElementById('status');
@@ -64,7 +65,7 @@ async function query(addr){
     const d = await fetchJson(`${API_BASE}/addresses/${addr}`);
     const wei = BigInt(d.coin_balance || 0n);
     const stt = Number(wei) / 1e18;
-    return {ok:true, bal:stt.toLocaleString(undefined,{maximumFractionDigits:6}), blk:d.block_number_balance_updated_at};
+    return {ok:true, balance:stt, balStr:stt.toLocaleString(undefined,{maximumFractionDigits:6}), blk:d.block_number_balance_updated_at};
   }catch(e){
     return {ok:false, err:e.message};
   }
@@ -73,31 +74,34 @@ async function query(addr){
 function addRow(idx, addr, res){
   const tr = document.createElement('tr');
   if(res.ok){
-    tr.innerHTML = `<td>${idx}</td><td>${addr}</td><td>${res.bal}</td><td>${res.blk||'-'}</td><td class="ok">✅</td>`;
+    if(res.balance>0){ tr.classList.add('highlight'); }
+    tr.innerHTML = `<td>${idx}</td><td>${addr}</td><td>${res.balStr}</td><td>${res.blk||'-'}</td><td class="ok">✅</td>`;
   }else{
     tr.innerHTML = `<td>${idx}</td><td>${addr}</td><td>-</td><td>-</td><td class="err">❌ ${res.err}</td>`;
   }
   tbody.appendChild(tr);
+  return res.ok && res.balance>0;
 }
 
-runBtn.onclick = async ()=>{
+runBtn.addEventListener('click', async ()=>{
   tbody.innerHTML = '';
   const addrs = addrInput.value.split(/\s+/).map(t=>t.trim()).filter(a=>/^0x[a-fA-F0-9]{40}$/.test(a));
   if(!addrs.length){ alert('请输入有效地址'); return; }
 
   runBtn.disabled = true;
   statusT.textContent = `共 ${addrs.length} 个地址，查询中…`;
+  let nonZero = 0;
 
   for(let i=0;i<addrs.length;i++){
     statusT.textContent = `处理 ${i+1}/${addrs.length}`;
     const res = await query(addrs[i]);
-    addRow(i+1, addrs[i], res);
+    if(addRow(i+1, addrs[i], res)) nonZero++;
     if(i<addrs.length-1) await new Promise(r=>setTimeout(r, delayMs));
   }
 
-  statusT.textContent = '查询完毕！';
+  statusT.textContent = `查询完毕！✅ 有余额地址：${nonZero} / ${addrs.length}`;
   runBtn.disabled = false;
-};
+});
 </script>
 </body>
 </html>
